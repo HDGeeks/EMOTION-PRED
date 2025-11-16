@@ -4,4 +4,4 @@
 # But not these files/folders
 !.gitignore
 !requirements.txt
-!src/
+!src/notebooks/
