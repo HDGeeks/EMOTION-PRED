@@ -5,5 +5,6 @@
 !.gitignore
 !requirements.txt
 !src/
+!src/*.py
 !src/notebooks/
 !src/notebooks/**
