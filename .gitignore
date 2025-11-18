@@ -1,7 +1,9 @@
 # Ignore everything
 *
 
-# But not these files/folders
+# Allow these
 !.gitignore
 !requirements.txt
+!src/
 !src/notebooks/
+!src/notebooks/**
