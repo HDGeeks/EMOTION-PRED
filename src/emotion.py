@@ -21,6 +21,34 @@ warnings.filterwarnings("ignore")
 from transformers.utils import logging
 logging.set_verbosity_error()
 
+import os
+
+try:
+    # Running as normal Python script inside src/
+    this_file = os.path.abspath(__file__)
+    src_root = os.path.dirname(this_file)                        # EMOTION-PRED/src
+    project_root = os.path.dirname(src_root)                    # EMOTION-PRED/
+except NameError:
+    # Running inside Jupyter (likely src/notebooks or src/)
+    cwd = os.getcwd()
+
+    # If running inside src/notebooks → go up one level
+    if cwd.endswith("notebooks"):
+        src_root = os.path.abspath(os.path.join(cwd, ".."))
+        project_root = os.path.dirname(src_root)
+    else:
+        # Running from project root directly
+        project_root = cwd
+        src_root = os.path.join(project_root, "src")
+
+# Final unified paths
+results_root = os.path.join(src_root, "results")
+data_root = os.path.join(src_root, "data")
+
+print(f"📂 Project root: {project_root}")
+print(f"📂 Source root: {src_root}")
+print(f"📂 Results root: {results_root}")
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 MODEL_NAMES = [
     "j-hartmann/emotion-english-distilroberta-base",
@@ -179,7 +207,7 @@ def run_full_emotion_pipeline(
     model_names=MODEL_NAMES,
     dataset_name="dataset",
     sample_limit=200,
-    results_root="/Users/hd/Desktop/EMOTION-PRED/src/results/"
+    results_root=results_root
 ):
     """
     SINGLE ENTRY POINT:
