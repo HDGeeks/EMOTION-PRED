@@ -1,11 +1,33 @@
-# Ignore everything
+# -------------------------------
+# Ignore Python cache everywhere
+# -------------------------------
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# -------------------------------
+# Ignore everything by default
+# -------------------------------
 *
 
-# Allow these
+# -------------------------------
+# Allow these root files
+# -------------------------------
 !.gitignore
 !requirements.txt
 !README.md
+
+# -------------------------------
+# Allow src/ and everything inside
+# -------------------------------
 !src/
-!src/*.py
+
+# Allow .py files anywhere inside src/
+!src/**/*.py
+
+# Allow notebooks folder + contents
 !src/notebooks/
 !src/notebooks/**
+
