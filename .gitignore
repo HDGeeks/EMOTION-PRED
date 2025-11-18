@@ -4,6 +4,7 @@
 # Allow these
 !.gitignore
 !requirements.txt
+!README.md
 !src/
 !src/*.py
 !src/notebooks/
