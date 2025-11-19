@@ -56,7 +56,8 @@ MODEL_NAMES = [
     "nateraw/bert-base-uncased-emotion",
     "joeddav/distilbert-base-uncased-go-emotions-student",
     "cardiffnlp/twitter-roberta-base-emotion",
-    "mrm8488/t5-base-finetuned-emotion"
+    "mrm8488/t5-base-finetuned-emotion",
+    "SamLowe/roberta-base-go_emotions"
 ]
 
 # ======================================================
