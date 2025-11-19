@@ -170,35 +170,66 @@ def build_classifier(model_name):
 # ======================================================
 
 def evaluate_model(model_name, texts, true_labels, label_names, sample_limit=200):
+    """
+    Evaluate a single emotion model against a gold validation set.
+    Returns a classification report (as DataFrame) and a confusion matrix.
+    """
+
+    # Build the model-specific classification function
     classify = build_classifier(model_name)
 
+    # List to store raw predicted label strings from the model
     preds = []
+
+    # Loop over the first `sample_limit` texts for evaluation
     for t in texts[:sample_limit]:
         try:
+            # Attempt classification (no aspect used here)
             preds.append(classify(t, ""))
         except Exception:
+            # If model crashes or gives an invalid output, record "unknown"
             preds.append("unknown")
 
-    pred_indices = [label_names.index(p) if p in label_names else -1 for p in preds]
+    # Convert predicted label strings into numerical indices
+    # If a predicted label is not in label_names, mark it as -1 (invalid)
+    pred_indices = [
+        label_names.index(p) if p in label_names else -1
+        for p in preds
+    ]
+
+    # Collect indices of predictions that are valid (not -1)
     valid = [i for i, x in enumerate(pred_indices) if x != -1]
 
+    # Filter gold labels to include only positions where predictions were valid
     y_true = [true_labels[i] for i in valid]
+
+    # Filter predicted indices to only valid positions
     y_pred = [pred_indices[i] for i in valid]
 
+    # If too few valid predictions exist, evaluation is not meaningful
     if len(y_true) < 3:
         print("Not enough valid predictions for evaluation.")
         return pd.DataFrame(), None
 
+    # Compute full precision, recall, and F1 per class and averages
     report = classification_report(
-        y_true, y_pred,
+        y_true,
+        y_pred,
         target_names=label_names,
         output_dict=True,
-        zero_division=0
+        zero_division=0    # Avoid division-by-zero errors for empty classes
     )
+
+    # Convert the report dictionary into a DataFrame for easier inspection
     df_report = pd.DataFrame(report).transpose()
+
+    # Compute confusion matrix for detailed error analysis
     cm = confusion_matrix(y_true, y_pred)
 
+    # Print the macro F1 score (main metric for balanced evaluation)
     print("  Macro F1:", df_report.loc["macro avg", "f1-score"])
+
+    # Return both the classification report and the confusion matrix
     return df_report, cm
 
 
