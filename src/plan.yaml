@@ -1,0 +1,120 @@
+# plan.yaml
+# End-to-end strategy for adding emotion labels to MAMS using minimal manual effort
+
+project: "MAMS Emotion Annotation Pipeline"
+
+dataset:
+  name: "MAMS (train)"
+  size: 7446
+  columns:
+    - text
+    - aspect
+    - polarity
+  goal: "Add emotion labels (6–10 classes) to each row"
+
+labels:
+  emotion_set:
+    - anger
+    - fear
+    - joy
+    - love
+    - sadness
+    - surprise
+  rationale: |
+    A compact, well-studied emotion set enables stable evaluation,
+    consistent annotation, and reliable auto-labeling performance.
+
+steps:
+
+  1_sample_validation_set:
+    description: "Create a stratified 300-row gold emotion dataset"
+    method: "Random sampling stratified by polarity"
+    target_size: 300
+    split:
+      validation: 250
+      test: 50
+    reason: |
+      300 examples provide enough statistical power for stable F1 estimates,
+      per-class analysis, and threshold tuning while keeping annotation cost low.
+
+  2_manual_annotation:
+    description: "Manually assign emotion labels to sampled rows"
+    expected_time: "2–3 hours total"
+    guidelines:
+      - maintain consistency in emotion categories
+      - use aspect-aware interpretation
+      - document ambiguous cases
+
+  3_choose_pretrained_model:
+    models:
+      preferred: "SamLowe/roberta-base-go_emotions"
+      alternatives:
+        - "j-hartmann/emotion-english-roberta-large"
+        - "microsoft/deberta-v3-large-emotion"
+    reasoning: |
+      These models are trained on GoEmotions and deliver strong,
+      general-purpose emotion predictions without additional training.
+
+  4_evaluate_on_validation_set:
+    metrics:
+      compute:
+        - macro_precision
+        - macro_recall
+        - macro_f1
+        - per_class_f1
+      decision_criteria:
+        macro_f1_minimum: 0.70
+        per_class_f1_minimum: 0.60
+    reason: |
+      If the model achieves these values on 300 gold-labeled rows,
+      it is considered reliable enough for large-scale auto-labeling.
+
+  5_threshold_tuning:
+    description: "Find confidence cutoff for accepting predictions"
+    thresholds_to_test: [0.5, 0.6, 0.7, 0.75, 0.8, 0.9]
+    selection_rule: |
+      Choose the threshold that maximizes F1 on the validation set
+      while keeping precision above 0.75.
+    default_expected_threshold: 0.75–0.80
+
+  6_auto_label_full_dataset:
+    description: "Apply the selected model + threshold to all 7446 rows"
+    acceptance:
+      rule: "Assign emotion if max_score >= threshold"
+    output_fields:
+      - predicted_emotion
+      - prediction_confidence
+    low_confidence_handling:
+      - optionally flag for manual review
+      - optionally run through a second model for consensus
+
+  7_quality_checks:
+    checks:
+      - ensure no missing labels
+      - inspect 50 random auto-labeled samples
+      - verify distribution similarity between gold and full dataset
+    optional:
+      - inter-model agreement check using a second emotion model
+
+  8_final_split_and_save:
+    outputs:
+      - "gold_validation_set.csv"
+      - "gold_test_set.csv"
+      - "auto_labeled_mams.csv"
+      - "metrics_report.json"
+      - "threshold_selection_plot.png"
+    purpose: |
+      Ensure full reproducibility, clear separation of evaluation data,
+      and clean integration into downstream training/analysis.
+
+success_criteria:
+  - macro_f1_on_validation >= 0.70
+  - per_class_f1_for_major_emotions >= 0.60
+  - confidence_threshold_selected
+  - auto_labeling_complete
+  - quality_checks_passed
+
+notes:
+  - No model training is required unless evaluation metrics fail.
+  - If metrics fail, consider annotating an additional 100–150 gold examples.
+  - This plan minimizes human effort while ensuring scientific quality.

@@ -23,7 +23,7 @@ __pycache__/
 # Allow src/ and everything inside
 # -------------------------------
 !src/
-
+!src/plan.yaml
 # Allow .py files anywhere inside src/
 !src/**/*.py
 
