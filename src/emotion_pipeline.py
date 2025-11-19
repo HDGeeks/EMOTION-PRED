@@ -45,11 +45,13 @@ except NameError:
 results_root = os.path.join(src_root, "results")
 data_root = os.path.join(src_root, "data")
 
-print(f"📂 Project root: {project_root}")
-print(f"📂 Source root: {src_root}")
-print(f"📂 Results root: {results_root}")
+print(f"Project root: {project_root}")
+print(f"Source root: {src_root}")
+print(f"Results root: {results_root}")
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
 MODEL_NAMES = [
     "j-hartmann/emotion-english-distilroberta-base",
     "j-hartmann/emotion-english-roberta-large",
@@ -59,6 +61,7 @@ MODEL_NAMES = [
     "mrm8488/t5-base-finetuned-emotion",
     "SamLowe/roberta-base-go_emotions"
 ]
+
 
 # ======================================================
 #  DEVICE HELPERS
@@ -91,7 +94,7 @@ def build_classifier(model_name):
     model_type = config.model_type
     arch = str(config.architectures)
 
-    print(f"  🔍 Model type: {model_type} | arch={arch}")
+    print(f"  Model type: {model_type} | arch={arch}")
 
     # ---- T5 ----
     if "t5" in model_name.lower():
@@ -183,7 +186,7 @@ def evaluate_model(model_name, texts, true_labels, label_names, sample_limit=200
     y_pred = [pred_indices[i] for i in valid]
 
     if len(y_true) < 3:
-        print("⚠ Not enough valid predictions for evaluation.")
+        print("Not enough valid predictions for evaluation.")
         return pd.DataFrame(), None
 
     report = classification_report(
@@ -195,7 +198,7 @@ def evaluate_model(model_name, texts, true_labels, label_names, sample_limit=200
     df_report = pd.DataFrame(report).transpose()
     cm = confusion_matrix(y_true, y_pred)
 
-    print("  📊 Macro F1:", df_report.loc["macro avg", "f1-score"])
+    print("  Macro F1:", df_report.loc["macro avg", "f1-score"])
     return df_report, cm
 
 
@@ -217,7 +220,7 @@ def run_full_emotion_pipeline(
       3) Save each annotated CSV
     """
 
-    print("\n🚀 Starting full emotion pipeline\n")
+    print("\nStarting full emotion pipeline\n")
 
     # Load
     df = pd.read_csv(input_csv, dtype=str)
@@ -227,12 +230,12 @@ def run_full_emotion_pipeline(
 
     out_dir = os.path.join(results_root, f"emotion_{dataset_name}")
     os.makedirs(out_dir, exist_ok=True)
-    print(f"📁 Saving outputs to: {out_dir}")
+    print(f"Saving outputs to: {out_dir}")
 
     # Loop through models
     for model_name in model_names:
-        print(f"\n==============================")
-        print(f"🔹 Annotating with: {model_name}")
+        print("\n==============================")
+        print(f"Annotating with: {model_name}")
         print("==============================")
 
         classify = build_classifier(model_name)
@@ -246,9 +249,9 @@ def run_full_emotion_pipeline(
         safe = re.sub(r"[^a-zA-Z0-9]", "_", model_name)
         csv_path = os.path.join(out_dir, f"{safe}_annotated.csv")
         df_out.to_csv(csv_path, index=False)
-        print(f"   ✅ Saved → {csv_path}")
+        print(f"   Saved → {csv_path}")
 
-    print("\n🎯 Pipeline completed successfully.\n")
+    print("\nPipeline completed successfully.\n")
 
 
 __all__ = [
