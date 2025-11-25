@@ -185,12 +185,38 @@ def _build_texts(sentences: List[str], aspects: List[str]) -> List[str]:
     return [f"[ASPECT] {a} [SENTENCE] {s}" for s, a in zip(sentences, aspects)]
 
 
-def annotate_model(model_name: str, df: pd.DataFrame) -> List[str]:
+def annotate_model(model_name=None, df=None):
     """
-    Fast batch processing for any model.
-    Returns list of emotion labels (one per row in df).
-    Assumes df has columns: 'sentence', 'aspect_term'.
+    Multi-mode annotation function:
+    - If model_name is provided -> run ONE model (existing behavior)
+    - If model_name is None -> run ALL models from MODEL_NAMES
+    Returns:
+        - List[str] for single model
+        - Dict[str, List[str]] for multi-model mode
     """
+
+    if df is None:
+        raise ValueError("You must provide a DataFrame with 'sentence' and 'aspect_term' columns")
+
+    # -----------------------------------
+    # MODE 1 → Run ALL models (NEW)
+    # -----------------------------------
+    if model_name is None:
+        results = {}
+        print("Running all models...\n")
+
+        for m in MODEL_NAMES:
+            print(f"=== {m} ===")
+            preds = annotate_model(model_name=m, df=df)   # recursive
+            results[m] = preds
+
+        return results
+
+    # -----------------------------------
+    # MODE 2 → Run ONE model
+    # (Everything below is your existing code)
+    # -----------------------------------
+
     sentences = df["sentence"].astype(str).tolist()
     aspects = df["aspect_term"].astype(str).tolist()
 
@@ -264,14 +290,13 @@ def annotate_model(model_name: str, df: pd.DataFrame) -> List[str]:
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             out_batch = pipe(batch)
-            # out_batch: List[List[{"label": ..., "score": ...}, ...]]
             for scores in out_batch:
                 best = max(scores, key=lambda x: x["score"])
                 outputs.append(best["label"].lower())
 
         return outputs
 
-    # ---- Default models (HF pipeline, batched) ----
+    # ---- Default models ----
     else:
         print("  [Default] Using batched text-classification pipeline...")
         pipe = pipeline(
@@ -291,8 +316,6 @@ def annotate_model(model_name: str, df: pd.DataFrame) -> List[str]:
             return o["label"].lower()
 
         return [norm(o) for o in outs]
-
-
 # ---------------------------------------------------------------------
 # MODEL EVALUATION (unchanged, small sample only)
 # ---------------------------------------------------------------------
