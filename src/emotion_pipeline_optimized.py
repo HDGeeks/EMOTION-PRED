@@ -185,42 +185,47 @@ def _build_texts(sentences: List[str], aspects: List[str]) -> List[str]:
     return [f"[ASPECT] {a} [SENTENCE] {s}" for s, a in zip(sentences, aspects)]
 
 
-def annotate_model(model_name=None, df=None):
+def annotate_model(df, model_name=None):
     """
     Multi-mode annotation function:
-    - If model_name is provided -> run ONE model (existing behavior)
-    - If model_name is None -> run ALL models from MODEL_NAMES
+    - annotate_model(df) → run ALL models
+    - annotate_model(df, model_name="...") → run ONE model
     Returns:
-        - List[str] for single model
         - Dict[str, List[str]] for multi-model mode
+        - List[str] for single model mode
     """
 
+    # -----------------------------------
+    # INPUT VALIDATION
+    # -----------------------------------
     if df is None:
         raise ValueError("You must provide a DataFrame with 'sentence' and 'aspect_term' columns")
 
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("First argument must be a pandas DataFrame")
+
+    if "sentence" not in df or "aspect_term" not in df:
+        raise ValueError("DataFrame must contain 'sentence' and 'aspect_term' columns")
+
     # -----------------------------------
-    # MODE 1 → Run ALL models (NEW)
+    # MODE 1: RUN ALL MODELS
     # -----------------------------------
     if model_name is None:
-        results = {}
         print("Running all models...\n")
-
+        results = {}
         for m in MODEL_NAMES:
             print(f"=== {m} ===")
-            preds = annotate_model(model_name=m, df=df)   # recursive
+            preds = annotate_model(df, model_name=m)  # recursive
             results[m] = preds
-
         return results
 
     # -----------------------------------
-    # MODE 2 → Run ONE model
-    # (Everything below is your existing code)
+    # MODE 2: RUN ONE MODEL
     # -----------------------------------
-
     sentences = df["sentence"].astype(str).tolist()
     aspects = df["aspect_term"].astype(str).tolist()
 
-    # ---- T5 branch (text2text generation, batched) ----
+    # ---- T5 branch ----
     if "t5" in model_name.lower():
         print("  [T5] Using batched text2text-generation...")
         pipe = pipeline(
@@ -229,22 +234,20 @@ def annotate_model(model_name=None, df=None):
             tokenizer=model_name,
             device=PIPELINE_DEVICE,
         )
-
         texts = [
             f"classify emotion: [ASPECT] {a} [SENTENCE] {s}"
             for s, a in zip(sentences, aspects)
         ]
 
-        outputs: List[str] = []
+        outputs = []
         batch_size = 16
         for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
+            batch = texts[i:i+batch_size]
             out = pipe(batch, max_length=32)
             outputs.extend([o["generated_text"].strip().lower() for o in out])
-
         return outputs
 
-    # ---- CardiffNLP branch (manual batching with PT) ----
+    # ---- CardiffNLP branch ----
     elif "cardiffnlp" in model_name.lower():
         print("  [CardiffNLP] Using manual batched forward pass...")
         labels = ["anger", "joy", "optimism", "sadness"]
@@ -252,11 +255,11 @@ def annotate_model(model_name=None, df=None):
         model = AutoModelForSequenceClassification.from_pretrained(model_name).to(DEVICE)
 
         texts = _build_texts(sentences, aspects)
-        outputs: List[str] = []
+        outputs = []
         batch_size = 32
 
         for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
+            batch = texts[i:i+batch_size]
             enc = tokenizer(
                 batch,
                 return_tensors="pt",
@@ -269,12 +272,11 @@ def annotate_model(model_name=None, df=None):
 
             preds = torch.softmax(logits, dim=1).argmax(dim=1).cpu().numpy()
             outputs.extend([labels[p] for p in preds])
-
         return outputs
 
-    # ---- GoEmotions branch (batched, return_all_scores=True) ----
+    # ---- GoEmotions branch ----
     elif "go_emotions" in model_name.lower():
-        print("  [GoEmotions] Using batched text-classification with scores...")
+        print("  [GoEmotions] Using batched text-classification...")
         pipe = pipeline(
             "text-classification",
             model=model_name,
@@ -284,16 +286,15 @@ def annotate_model(model_name=None, df=None):
         )
 
         texts = _build_texts(sentences, aspects)
-        outputs: List[str] = []
+        outputs = []
         batch_size = 32
 
         for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
+            batch = texts[i:i+batch_size]
             out_batch = pipe(batch)
             for scores in out_batch:
                 best = max(scores, key=lambda x: x["score"])
                 outputs.append(best["label"].lower())
-
         return outputs
 
     # ---- Default models ----
@@ -316,6 +317,7 @@ def annotate_model(model_name=None, df=None):
             return o["label"].lower()
 
         return [norm(o) for o in outs]
+
 # ---------------------------------------------------------------------
 # MODEL EVALUATION (unchanged, small sample only)
 # ---------------------------------------------------------------------
