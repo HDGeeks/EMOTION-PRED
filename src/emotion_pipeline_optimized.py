@@ -19,21 +19,20 @@ from transformers import (
 )
 from sklearn.metrics import classification_report, confusion_matrix
 from transformers.utils import logging
+import json
 
-# Silence HF warnings
+# silence warnings
 warnings.filterwarnings("ignore")
 logging.set_verbosity_error()
 
-# ---------------------------------------------------------------------
-# PATHS (same logic as before, but this file can also be imported)
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------
+# PATH RESOLUTION (UNCHANGED)
+# ---------------------------------------------------------
 try:
-    # Running as normal Python script inside src/
     this_file = os.path.abspath(__file__)
-    src_root = os.path.dirname(this_file)          # EMOTION-PRED/src
-    project_root = os.path.dirname(src_root)       # EMOTION-PRED/
+    src_root = os.path.dirname(this_file)
+    project_root = os.path.dirname(src_root)
 except NameError:
-    # Running inside Jupyter (likely src/notebooks or src/)
     cwd = os.getcwd()
     if cwd.endswith("notebooks"):
         src_root = os.path.abspath(os.path.join(cwd, ".."))
@@ -52,10 +51,9 @@ print(f"Data root:    {data_root}")
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------
 # MODELS
-# ---------------------------------------------------------------------
-
+# ---------------------------------------------------------
 MODEL_NAMES = [
     "j-hartmann/emotion-english-distilroberta-base",
     "j-hartmann/emotion-english-roberta-large",
@@ -66,77 +64,72 @@ MODEL_NAMES = [
     "SamLowe/roberta-base-go_emotions",
 ]
 
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------
 # DEVICE HELPERS
-# ---------------------------------------------------------------------
-
-
+# ---------------------------------------------------------
 def get_device() -> str:
-    """Prefer Apple MPS if available, otherwise CPU."""
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
-
 def get_pipeline_device() -> int:
-    """
-    Device index for HF pipelines:
-      - 0 for MPS (treated like GPU)
-      - -1 for CPU
-    """
     return 0 if torch.backends.mps.is_available() else -1
-
 
 DEVICE = get_device()
 PIPELINE_DEVICE = get_pipeline_device()
 
+# ---------------------------------------------------------
+# JSONL LOADER → DataFrame
+# ---------------------------------------------------------
+def load_jsonl_dataset(jsonl_path: str) -> pd.DataFrame:
+    """Load MAMS-style JSONL and expand into a flat ABSA DataFrame."""
+    records = []
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            sentence = obj["input"]
+            for item in obj["output"]:
+                records.append({
+                    "sentence": sentence,
+                    "aspect_term": item.get("aspect", ""),
+                    "polarity": item.get("polarity", ""),
+                    "emotion": item.get("emotion", None),
+                })
+    df = pd.DataFrame(records)
+    df["row_id"] = df.index
+    return df[["row_id", "sentence", "aspect_term", "polarity", "emotion"]]
 
-# ---------------------------------------------------------------------
-# BUILD CLASSIFIER (for evaluation / single-step use)
-# ---------------------------------------------------------------------
 
-
+# ---------------------------------------------------------
+# BUILD CLASSIFIER
+# ---------------------------------------------------------
 def build_classifier(model_name: str):
-    """
-    Unified classifier wrapper for all model architectures.
-    Returns: classify(sentence, aspect) -> str (emotion label)
-    (Used mainly for evaluation; annotation uses batched code below.)
-    """
     config = AutoConfig.from_pretrained(model_name)
     model_type = config.model_type
     arch = str(config.architectures)
-
     print(f"  Model type: {model_type} | arch={arch}")
 
     # ---- T5 ----
     if "t5" in model_name.lower():
-        pipe = pipeline(
-            "text2text-generation",
-            model=model_name,
-            tokenizer=model_name,
-            device=PIPELINE_DEVICE,
-        )
+        pipe = pipeline("text2text-generation", model=model_name,
+                        tokenizer=model_name, device=PIPELINE_DEVICE)
 
-        def classify(sentence: str, aspect: str) -> str:
+        def classify(sentence, aspect):
             prompt = f"classify emotion: [ASPECT] {aspect} [SENTENCE] {sentence}"
             return pipe(prompt)[0]["generated_text"].strip().lower()
-
         return classify
 
     # ---- GoEmotions ----
     elif "go_emotions" in model_name.lower():
-        pipe = pipeline(
-            "text-classification",
-            model=model_name,
-            tokenizer=model_name,
-            return_all_scores=True,
-            device=PIPELINE_DEVICE,
-        )
+        pipe = pipeline("text-classification", model=model_name,
+                        tokenizer=model_name, return_all_scores=True,
+                        device=PIPELINE_DEVICE)
 
-        def classify(sentence: str, aspect: str) -> str:
+        def classify(sentence, aspect):
             text = f"[ASPECT] {aspect} [SENTENCE] {sentence}"
             scores = pipe(text)[0]
             best = max(scores, key=lambda x: x["score"])
             return best["label"].lower()
-
         return classify
 
     # ---- CardiffNLP ----
@@ -145,169 +138,106 @@ def build_classifier(model_name: str):
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModelForSequenceClassification.from_pretrained(model_name).to(DEVICE)
 
-        def classify(sentence: str, aspect: str) -> str:
+        def classify(sentence, aspect):
             text = f"[ASPECT] {aspect} [SENTENCE] {sentence}"
-            inputs = tokenizer(text, return_tensors="pt").to(DEVICE)
+            enc = tokenizer(text, return_tensors="pt").to(DEVICE)
             with torch.no_grad():
-                logits = model(**inputs).logits
-            pred_id = torch.softmax(logits, dim=1).argmax().item()
-            return labels[pred_id]
-
+                logits = model(**enc).logits
+            pred = logits.softmax(1).argmax().item()
+            return labels[pred]
         return classify
 
-    # ---- Default models ----
+    # ---- Default ----
     else:
-        pipe = pipeline(
-            "text-classification",
-            model=model_name,
-            tokenizer=model_name,
-            device=PIPELINE_DEVICE,
-            top_k=1,
-        )
+        pipe = pipeline("text-classification", model=model_name,
+                        tokenizer=model_name, device=PIPELINE_DEVICE, top_k=1)
 
-        def classify(sentence: str, aspect: str) -> str:
+        def classify(sentence, aspect):
             text = f"[ASPECT] {aspect} [SENTENCE] {sentence}"
             out = pipe(text)[0]
             if isinstance(out, list):
                 out = out[0]
             return out["label"].lower()
-
         return classify
 
 
-# ---------------------------------------------------------------------
-# OPTIMIZED BATCH ANNOTATION
-# ---------------------------------------------------------------------
-
-
-def _build_texts(sentences: List[str], aspects: List[str]) -> List[str]:
-    """Build joint input: [ASPECT] ... [SENTENCE] ..."""
+# ---------------------------------------------------------
+# BATCH PIPELINE (annotate_model)
+# ---------------------------------------------------------
+def _build_texts(sentences, aspects):
     return [f"[ASPECT] {a} [SENTENCE] {s}" for s, a in zip(sentences, aspects)]
 
 
-def annotate_model(df, model_name=None):
-    """
-    Multi-mode annotation function:
-    - annotate_model(df) → run ALL models
-    - annotate_model(df, model_name="...") → run ONE model
-    Returns:
-        - Dict[str, List[str]] for multi-model mode
-        - List[str] for single model mode
-    """
-
-    # -----------------------------------
-    # INPUT VALIDATION
-    # -----------------------------------
+def annotate_model(df: pd.DataFrame, model_name=None):
     if df is None:
-        raise ValueError("You must provide a DataFrame with 'sentence' and 'aspect_term' columns")
-
+        raise ValueError("DataFrame required.")
     if not isinstance(df, pd.DataFrame):
-        raise TypeError("First argument must be a pandas DataFrame")
-
+        raise TypeError("First argument must be a DataFrame.")
     if "sentence" not in df or "aspect_term" not in df:
-        raise ValueError("DataFrame must contain 'sentence' and 'aspect_term' columns")
+        raise ValueError("Missing required columns.")
 
-    # -----------------------------------
-    # MODE 1: RUN ALL MODELS
-    # -----------------------------------
+    # RUN ALL MODELS
     if model_name is None:
-        print("Running all models...\n")
         results = {}
         for m in MODEL_NAMES:
-            print(f"=== {m} ===")
-            preds = annotate_model(df, model_name=m)  # recursive
-            results[m] = preds
+            print(f"=== Running: {m} ===")
+            results[m] = annotate_model(df, m)
         return results
 
-    # -----------------------------------
-    # MODE 2: RUN ONE MODEL
-    # -----------------------------------
     sentences = df["sentence"].astype(str).tolist()
     aspects = df["aspect_term"].astype(str).tolist()
 
-    # ---- T5 branch ----
+    # ---- T5 ----
     if "t5" in model_name.lower():
-        print("  [T5] Using batched text2text-generation...")
-        pipe = pipeline(
-            "text2text-generation",
-            model=model_name,
-            tokenizer=model_name,
-            device=PIPELINE_DEVICE,
-        )
-        texts = [
-            f"classify emotion: [ASPECT] {a} [SENTENCE] {s}"
-            for s, a in zip(sentences, aspects)
-        ]
+        pipe = pipeline("text2text-generation", model=model_name,
+                        tokenizer=model_name, device=PIPELINE_DEVICE)
+        texts = [f"classify emotion: [ASPECT] {a} [SENTENCE] {s}"
+                 for s, a in zip(sentences, aspects)]
 
         outputs = []
-        batch_size = 16
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i+batch_size]
+        for i in range(0, len(texts), 16):
+            batch = texts[i:i+16]
             out = pipe(batch, max_length=32)
             outputs.extend([o["generated_text"].strip().lower() for o in out])
         return outputs
 
-    # ---- CardiffNLP branch ----
+    # ---- CardiffNLP ----
     elif "cardiffnlp" in model_name.lower():
-        print("  [CardiffNLP] Using manual batched forward pass...")
         labels = ["anger", "joy", "optimism", "sadness"]
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModelForSequenceClassification.from_pretrained(model_name).to(DEVICE)
 
         texts = _build_texts(sentences, aspects)
         outputs = []
-        batch_size = 32
-
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i+batch_size]
-            enc = tokenizer(
-                batch,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-            ).to(DEVICE)
-
+        for i in range(0, len(texts), 32):
+            batch = texts[i:i+32]
+            enc = tokenizer(batch, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
             with torch.no_grad():
                 logits = model(**enc).logits
-
-            preds = torch.softmax(logits, dim=1).argmax(dim=1).cpu().numpy()
+            preds = logits.softmax(1).argmax(1).cpu().numpy()
             outputs.extend([labels[p] for p in preds])
         return outputs
 
-    # ---- GoEmotions branch ----
+    # ---- GoEmotions ----
     elif "go_emotions" in model_name.lower():
-        print("  [GoEmotions] Using batched text-classification...")
-        pipe = pipeline(
-            "text-classification",
-            model=model_name,
-            tokenizer=model_name,
-            return_all_scores=True,
-            device=PIPELINE_DEVICE,
-        )
-
+        pipe = pipeline("text-classification", model=model_name,
+                        tokenizer=model_name, return_all_scores=True,
+                        device=PIPELINE_DEVICE)
         texts = _build_texts(sentences, aspects)
-        outputs = []
-        batch_size = 32
 
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i+batch_size]
-            out_batch = pipe(batch)
-            for scores in out_batch:
+        outputs = []
+        for i in range(0, len(texts), 32):
+            batch = texts[i:i+32]
+            out = pipe(batch)
+            for scores in out:
                 best = max(scores, key=lambda x: x["score"])
                 outputs.append(best["label"].lower())
         return outputs
 
-    # ---- Default models ----
+    # ---- Default ----
     else:
-        print("  [Default] Using batched text-classification pipeline...")
-        pipe = pipeline(
-            "text-classification",
-            model=model_name,
-            tokenizer=model_name,
-            device=PIPELINE_DEVICE,
-            top_k=1,
-        )
-
+        pipe = pipeline("text-classification", model=model_name,
+                        tokenizer=model_name, device=PIPELINE_DEVICE, top_k=1)
         texts = _build_texts(sentences, aspects)
         outs = pipe(texts, batch_size=32)
 
@@ -318,197 +248,128 @@ def annotate_model(df, model_name=None):
 
         return [norm(o) for o in outs]
 
-# ---------------------------------------------------------------------
-# MODEL EVALUATION (unchanged, small sample only)
-# ---------------------------------------------------------------------
 
-
-def evaluate_model(
-    model_name: str,
-    texts: List[str],
-    true_labels: List[int],
-    label_names: List[str],
-    sample_limit: int = 200,
-) -> Tuple[pd.DataFrame, Optional[torch.Tensor]]:
-    """
-    Evaluate a single emotion model against a gold validation set.
-    Returns a classification report (as DataFrame) and a confusion matrix.
-    """
-
-    classify = build_classifier(model_name)
-    preds: List[str] = []
-
-    for t in texts[:sample_limit]:
-        try:
-            preds.append(classify(t, ""))  # no aspect for evaluation
-        except Exception:
-            preds.append("unknown")
-
-    pred_indices = [
-        label_names.index(p) if p in label_names else -1
-        for p in preds
-    ]
-
-    valid = [i for i, x in enumerate(pred_indices) if x != -1]
-    y_true = [true_labels[i] for i in valid]
-    y_pred = [pred_indices[i] for i in valid]
-
-    if len(y_true) < 3:
-        print("Not enough valid predictions for evaluation.")
-        return pd.DataFrame(), None
-
-    report = classification_report(
-        y_true,
-        y_pred,
-        target_names=label_names,
-        output_dict=True,
-        zero_division=0,
-    )
-
-    df_report = pd.DataFrame(report).transpose()
-    cm = confusion_matrix(y_true, y_pred)
-
-    print("  Macro F1:", df_report.loc["macro avg", "f1-score"])
-
-    return df_report, cm
-
-
-# ---------------------------------------------------------------------
-# MAIN ENTRY POINT (uses optimized annotate_model)
-# ---------------------------------------------------------------------
-
-
+# ---------------------------------------------------------
+# FULL PIPELINE: NOW TAKES DATAFRAME, NOT CSV
+# ---------------------------------------------------------
 def run_full_emotion_pipeline(
-    input_csv: str,
+    df: pd.DataFrame,
     model_names: List[str] = MODEL_NAMES,
     dataset_name: str = "dataset",
     results_root: str = results_root,
 ):
     """
-    SINGLE ENTRY POINT:
-      1) Load dataset
-      2) Annotate with all models (batched & optimized)
-      3) Save each annotated CSV
-      4) Print per-model timing + total timing
+    Runs the full optimized pipeline on a DataFrame
+    (not on a CSV path anymore).
     """
 
     print("\nStarting full optimized emotion pipeline\n")
-
-    # Start global timer
     global_start = time.time()
 
-    # Load dataset
-    df = pd.read_csv(input_csv, dtype=str)
-
     if "sentence" not in df or "aspect_term" not in df:
-        raise ValueError("CSV must contain columns: 'sentence', 'aspect_term'")
+        raise ValueError("DataFrame must have 'sentence' and 'aspect_term'.")
 
     out_dir = os.path.join(results_root, f"emotion_{dataset_name}")
     os.makedirs(out_dir, exist_ok=True)
-    print(f"Saving outputs to: {out_dir}")
 
-    # Collect per-model timings
     model_timings = []
 
-    # Annotate with each model
     for model_name in model_names:
-        print("\n==============================")
+        print("\n===================================")
         print(f"Annotating with: {model_name}")
-        print("==============================")
+        print("===================================")
 
-        # Start timer for this model
         model_start = time.time()
 
         df_out = df.copy()
-        preds = annotate_model(model_name, df_out)
+        preds = annotate_model(df_out, model_name)
         df_out["emotion_auto"] = preds
 
-        # End timer for this model
         model_end = time.time()
         elapsed = model_end - model_start
         model_timings.append((model_name, elapsed))
 
-        print(f"  → {model_name} completed in {elapsed:.2f} sec ({elapsed/60:.2f} min)")
+        print(f"→ {model_name} completed in {elapsed:.2f} sec")
 
-        # Save annotated CSV
         safe = re.sub(r"[^a-zA-Z0-9]", "_", model_name)
+
+        # -----------------------------
+        # Save CSV output
+        # -----------------------------
         csv_path = os.path.join(out_dir, f"{safe}_annotated.csv")
         df_out.to_csv(csv_path, index=False)
-        print(f"   Saved → {csv_path}")
+        print(f"Saved CSV → {csv_path}")
 
-    # End global timer
+        # -----------------------------
+        # Save grouped JSONL output
+        # -----------------------------
+        jsonl_path = os.path.join(out_dir, f"{safe}_annotated.jsonl")
+        save_jsonl_grouped(df_out, jsonl_path)
+        print(f"Saved JSONL → {jsonl_path}")
+
     global_end = time.time()
-    total_elapsed = global_end - global_start
 
-    # Print summary
-    print("\n================ MODEL TIMING SUMMARY ================")
-    total = 0
+    print("\nMODEL TIMING SUMMARY")
     for name, sec in model_timings:
-        print(f"{name:45s} : {sec:.2f} sec   ({sec/60:.2f} min)")
-        total += sec
+        print(f"{name:40s}: {sec:.2f} sec")
 
-    print("------------------------------------------------------")
-    print(f"TOTAL (per model sum)           : {total:.2f} sec  ({total/60:.2f} min)")
-    print(f"TOTAL (wall clock actual)       : {total_elapsed:.2f} sec  ({total_elapsed/60:.2f} min)")
-    print("======================================================\n")
+    print(f"\nTotal wall time: {global_end - global_start:.2f} sec")
 
-    print("\nOptimized pipeline completed successfully.\n")
+    print("\nPipeline done.\n")
 
+def save_jsonl_grouped(df_out: pd.DataFrame, jsonl_path: str):
+    """
+    Convert flat DF back into grouped JSONL format:
+    {
+      "input": "...sentence...",
+      "output": [
+         {"aspect": "...", "polarity": "...", "emotion": "..."},
+         ...
+      ]
+    }
+    """
+    grouped = df_out.groupby("sentence")
+
+    with open(jsonl_path, "w", encoding="utf-8") as f:
+        for sentence, group in grouped:
+            outputs = []
+            for _, row in group.iterrows():
+                outputs.append({
+                    "aspect": row["aspect_term"],
+                    "polarity": row["polarity"],
+                    "emotion": row["emotion_auto"],   # predicted emotion
+                })
+
+            obj = {
+                "input": sentence,
+                "output": outputs
+            }
+
+            f.write(json.dumps(obj) + "\n")
+
+    print(f"✔ JSONL saved → {jsonl_path}")
+# ---------------------------------------------------------
+# MAIN: LOAD JSONL → RUN ONE-MODEL PIPELINE
+# ---------------------------------------------------------
 if __name__ == "__main__":
 
-    # ---------------------------------------------
-    # 1. Path to your processed CSV
-    # ---------------------------------------------
-    train_csv = os.path.join(
+    jsonl_path = os.path.join(
         src_root,
         "data",
         "MAMS-ACSA",
         "raw",
         "data_jsonl",
-        "mams_train_full.csv"
+        "train.jsonl"
     )
 
-    if not os.path.exists(train_csv):
-        raise FileNotFoundError(f"CSV not found: {train_csv}")
+    print("Loading JSONL dataset...")
+    df = load_jsonl_dataset(jsonl_path)
 
-    # ---------------------------------------------
-    # 2. Load the dataset
-    # ---------------------------------------------
-    df = pd.read_csv(train_csv)
+    model_to_use = ["SamLowe/roberta-base-go_emotions"]
 
-    # ---------------------------------------------
-    # 3. SELECT ONE EMOTION MODEL
-    # ---------------------------------------------
-    model_to_use = "SamLowe/roberta-base-go_emotions"
-    # Or ANY from the list:
-    # "j-hartmann/emotion-english-distilroberta-base"
-    # "j-hartmann/emotion-english-roberta-large"
-    # "nateraw/bert-base-uncased-emotion"
-    # "joeddav/distilbert-base-uncased-go-emotions-student"
-    # "cardiffnlp/twitter-roberta-base-emotion"
-    # "mrm8488/t5-base-finetuned-emotion"
-
-    print(f"\nRunning EMOTION annotation with model: {model_to_use}")
-
-    # ---------------------------------------------
-    # 4. Run annotation for ONE MODEL
-    # ---------------------------------------------
-    preds = annotate_model(df=df, model_name=model_to_use)
-
-    # ---------------------------------------------
-    # 5. Attach predictions
-    # ---------------------------------------------
-    df["emotion_auto"] = preds
-
-    # ---------------------------------------------
-    # 6. Save model output
-    # ---------------------------------------------
-    out_dir = os.path.join(results_root, "emotion_single_model")
-    os.makedirs(out_dir, exist_ok=True)
-
-    safe_name = model_to_use.replace("/", "_")
-    out_path = os.path.join(out_dir, f"{safe_name}_train.csv")
-
-    df.to_csv(out_path, index=False)
-
-    print(f"\n✔ Saved single-model emotion annotations to:\n{out_path}\n")
+    run_full_emotion_pipeline(
+        df=df,
+        model_names=model_to_use,     # ONE MODEL ONLY
+        dataset_name="MAMS-ACSA",
+        results_root=results_root,
+    )
