@@ -293,19 +293,12 @@ def run_full_emotion_pipeline(
 
         safe = re.sub(r"[^a-zA-Z0-9]", "_", model_name)
 
-        # -----------------------------
-        # Save CSV output
-        # -----------------------------
-        csv_path = os.path.join(out_dir, f"{safe}_annotated.csv")
-        df_out.to_csv(csv_path, index=False)
-        print(f"Saved CSV → {csv_path}")
-
-        # -----------------------------
-        # Save grouped JSONL output
-        # -----------------------------
+        # ------------------------
+        # Save annotated JSONL (grouped, original structure)
+        # ------------------------
         jsonl_path = os.path.join(out_dir, f"{safe}_annotated.jsonl")
         save_jsonl_grouped(df_out, jsonl_path)
-        print(f"Saved JSONL → {jsonl_path}")
+        print(f"   Saved JSONL → {jsonl_path}")
 
     global_end = time.time()
 
