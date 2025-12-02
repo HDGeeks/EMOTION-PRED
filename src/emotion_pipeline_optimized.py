@@ -453,3 +453,62 @@ def run_full_emotion_pipeline(
     print("======================================================\n")
 
     print("\nOptimized pipeline completed successfully.\n")
+
+if __name__ == "__main__":
+
+    # ---------------------------------------------
+    # 1. Path to your processed CSV
+    # ---------------------------------------------
+    train_csv = os.path.join(
+        src_root,
+        "data",
+        "MAMS-ACSA",
+        "raw",
+        "data_jsonl",
+        "mams_train_full.csv"
+    )
+
+    if not os.path.exists(train_csv):
+        raise FileNotFoundError(f"CSV not found: {train_csv}")
+
+    # ---------------------------------------------
+    # 2. Load the dataset
+    # ---------------------------------------------
+    df = pd.read_csv(train_csv)
+
+    # ---------------------------------------------
+    # 3. SELECT ONE EMOTION MODEL
+    # ---------------------------------------------
+    model_to_use = "SamLowe/roberta-base-go_emotions"
+    # Or ANY from the list:
+    # "j-hartmann/emotion-english-distilroberta-base"
+    # "j-hartmann/emotion-english-roberta-large"
+    # "nateraw/bert-base-uncased-emotion"
+    # "joeddav/distilbert-base-uncased-go-emotions-student"
+    # "cardiffnlp/twitter-roberta-base-emotion"
+    # "mrm8488/t5-base-finetuned-emotion"
+
+    print(f"\nRunning EMOTION annotation with model: {model_to_use}")
+
+    # ---------------------------------------------
+    # 4. Run annotation for ONE MODEL
+    # ---------------------------------------------
+    preds = annotate_model(df=df, model_name=model_to_use)
+
+    # ---------------------------------------------
+    # 5. Attach predictions
+    # ---------------------------------------------
+    df["emotion_auto"] = preds
+
+    # ---------------------------------------------
+    # 6. Save model output
+    # ---------------------------------------------
+    out_dir = os.path.join(results_root, "emotion_single_model")
+    os.makedirs(out_dir, exist_ok=True)
+
+    safe_name = model_to_use.replace("/", "_")
+    out_path = os.path.join(out_dir, f"{safe_name}_train.csv")
+
+    df.to_csv(out_path, index=False)
+
+    print(f"\n✔ Saved single-model emotion annotations to:\n{out_path}\n")
