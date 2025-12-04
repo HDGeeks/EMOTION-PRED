@@ -1,33 +1,42 @@
-# -------------------------------
-# Ignore Python cache everywhere
-# -------------------------------
+.vscode/
+.venv
+.venv/
 __pycache__/
-**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# -------------------------------
-# Ignore everything by default
-# -------------------------------
-*
-
-# -------------------------------
-# Allow these root files
-# -------------------------------
-!.gitignore
-!requirements.txt
-!README.md
-
-# -------------------------------
-# Allow src/ and everything inside
-# -------------------------------
-!src/
-!src/plan.yaml
-# Allow .py files anywhere inside src/
-!src/**/*.py
-
-# Allow notebooks folder + contents
-!src/notebooks/
-!src/notebooks/**
-
+env/
+env.bak/
+venv/
+venv.bak/
+.idea/
+.DS_Store
+*.log
+*.sqlite3
+instance/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+dist/
+build/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+/src/__pycache__/
+/src/*.pyc
+/src/*.pyo
+/src/*.pyd
+/src/.pytest_cache/
+/src/.tox/
+/src/.nox/
+/src/dist/
+/src/build/
+/src/*.egg-info/
+/src/.eggs/
+/src/pip-wheel-metadata/
+/src/.env
+/src/.env/
+/src/.env
+     

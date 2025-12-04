@@ -1,0 +1,8 @@
+{
+    "model_name": "mrm8488/t5-base-finetuned-emotion",
+    "num_labels": 2,
+    "labels": [
+        "LABEL_0",
+        "LABEL_1"
+    ]
+}

@@ -1,0 +1,12 @@
+{
+    "model_name": "nateraw/bert-base-uncased-emotion",
+    "num_labels": 6,
+    "labels": [
+        "sadness",
+        "joy",
+        "love",
+        "anger",
+        "fear",
+        "surprise"
+    ]
+}

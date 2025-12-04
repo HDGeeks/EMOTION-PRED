@@ -1,0 +1,10 @@
+{
+    "model_name": "cardiffnlp/twitter-roberta-base-emotion",
+    "num_labels": 4,
+    "labels": [
+        "joy",
+        "optimism",
+        "anger",
+        "sadness"
+    ]
+}

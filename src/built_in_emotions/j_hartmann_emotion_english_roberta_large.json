@@ -1,0 +1,13 @@
+{
+    "model_name": "j-hartmann/emotion-english-roberta-large",
+    "num_labels": 7,
+    "labels": [
+        "anger",
+        "disgust",
+        "fear",
+        "joy",
+        "neutral",
+        "sadness",
+        "surprise"
+    ]
+}
