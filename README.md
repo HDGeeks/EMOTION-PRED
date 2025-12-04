@@ -13,7 +13,7 @@ Follow the steps below depending on your operating system.
 
 ### macOS / Linux
 ```bash
-python3 -m venv venv
+python3 -m venv .venv
 
 Windows
 
@@ -26,7 +26,7 @@ python -m venv venv
 
 macOS / Linux
 
-source venv/bin/activate
+source .venv/bin/activate
 
 Windows (PowerShell)
 
