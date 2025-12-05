@@ -1,0 +1,99 @@
+{
+  
+  "positive": [
+    "admiration",
+    "amusement",
+    "approval",
+    "caring",
+    "curiosity",
+    "desire",
+    "excitement",
+    "gratitude",
+    "joy",
+    "love",
+    "pride",
+    "relief",
+    "impressed",
+    "appreciative",
+    "satisfied",
+    "comfortable",
+    "worth_it",
+    "delighted",
+    "anticipation"
+  ],
+  "negative": [
+    "anger",
+    "annoyance",
+    "confusion",
+    "disappointment",
+    "disapproval",
+    "disgust",
+    "embarrassment",
+    "fear",
+    "nervousness",
+    "remorse",
+    "sadness",
+    "frustrated",
+    "uncomfortable",
+    "overcharged",
+    "disrespected",
+    "disgusted"
+  ],
+  "neutral": [
+    "indifferent",
+    "neutral",
+    "realization",
+    "surprise"
+  ],
+
+   "positive_with_intensity": {
+    "low_intensity": ["satisfied", "comfortable", "appreciative", "caring"],
+    "medium_intensity": ["approval", "gratitude", "curiosity", "desire", "relief", "worth_it", "admiration"],
+    "high_intensity": ["delighted", "excitement", "joy", "love", "pride", "impressed", "amusement", "anticipation"]
+  },
+  "negative_with_intensity": {
+    "low_intensity": ["confusion", "nervousness", "uncomfortable"],
+    "medium_intensity": ["annoyance", "disappointment", "remorse", "frustrated", "sadness", "disapproval"],
+    "high_intensity": ["anger", "disgust", "disgusted", "embarrassment", "fear", "disrespected", "overcharged"]
+  },
+  "neutral_with_intensity": {
+    "low_intensity": ["indifferent"],
+    "medium_intensity": ["neutral"],
+    "high_intensity": ["realization", "surprise"]
+  },
+  "ambience": {
+    "positive": ["admiration","approval","excitement"],
+    "negative": ["annoyance","disappointment","disapproval"],
+    "neutral": ["indifferent","neutral","realization"]
+  },
+  "food": {
+    "positive": ["joy","love","satisfied"],
+    "negative": ["disgust","remorse","frustrated"],
+    "neutral": ["indifferent","neutral"]
+  },
+  "menu": {
+    "positive": ["appreciative","caring","impressed"],
+    "negative": ["disappointment","annoyance","confusion"],
+    "neutral": ["indifferent","neutral"]
+  },
+  "place": {
+    "positive": ["approval","excitement","comfortable"],
+    "negative": ["disapproval","disappointment","annoyance"],
+    "neutral": ["indifferent","neutral","realization"]
+  },
+  "price": {
+    "positive": ["worth_it","surprise","relief"],
+    "negative": ["overcharged","disapproval","anger"],
+    "neutral": ["indifferent","realization"]
+  },
+  "service": {
+    "positive": ["approval","gratitude","delighted"],
+    "negative": ["annoyance","disappointment","frustrated"],
+    "neutral": ["neutral","indifferent"]
+  },
+  "staff": {
+    "positive": ["gratitude","appreciative","pride"],
+    "negative": ["disappointment","embarrassment","annoyance"],
+    "neutral": ["indifferent","neutral"]
+  }
+}
